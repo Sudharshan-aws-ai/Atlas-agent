@@ -34,6 +34,72 @@ export default function Dashboard() {
     { name: 'Dispostn', count: stats.ds_records, color: '#84cc16' },
   ];
 
+  const domainSummaryList = [
+    {
+      code: 'DM',
+      name: 'Demographics / Subjects',
+      count: stats.subjects_covered,
+      desc: 'Subject demographics, enrollment details & baseline parameters',
+      borderColor: 'border-l-blue-600',
+    },
+    {
+      code: 'AE',
+      name: 'Adverse Events',
+      count: stats.ae_records,
+      desc: 'Reported adverse events, severity classifications & serious flags',
+      borderColor: 'border-l-rose-600',
+    },
+    {
+      code: 'LB',
+      name: 'Laboratory Results',
+      count: stats.lab_records,
+      desc: 'Safety chemistry, transaminases, bilirubin & laboratory panels',
+      borderColor: 'border-l-indigo-600',
+    },
+    {
+      code: 'VS',
+      name: 'Vital Signs',
+      count: stats.vs_records,
+      desc: 'Systolic/diastolic blood pressure, pulse, temperature & BMI',
+      borderColor: 'border-l-purple-600',
+    },
+    {
+      code: 'EX',
+      name: 'Exposure / Dosing',
+      count: stats.ex_records,
+      desc: 'Investigational product dose administration & visit dates',
+      borderColor: 'border-l-emerald-600',
+    },
+    {
+      code: 'CM',
+      name: 'Concomitant Medications',
+      count: stats.cm_records,
+      desc: 'Prior & concomitant therapies, medication classes & indications',
+      borderColor: 'border-l-amber-600',
+    },
+    {
+      code: 'DS',
+      name: 'Disposition',
+      count: stats.ds_records,
+      desc: 'Trial completion milestones & primary discontinuation reasons',
+      borderColor: 'border-l-lime-600',
+    },
+    {
+      code: 'MH',
+      name: 'Medical History',
+      count: stats.mh_records,
+      desc: 'Baseline medical conditions & pre-existing clinical history',
+      borderColor: 'border-l-orange-600',
+    },
+    {
+      code: 'EG',
+      name: 'Electrocardiogram (ECG)',
+      count: stats.eg_records,
+      desc: 'Cardiac intervals, QT/QTc evaluations & rhythm analysis',
+      borderColor: 'border-l-cyan-600',
+    },
+  ];
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -56,6 +122,46 @@ export default function Dashboard() {
         <StatCard label="Lab Records" value={stats.lab_records} sub="LB domain" color="blue" />
         <StatCard label="Adverse Events" value={stats.ae_records} sub="AE domain" color="red" />
         <StatCard label="Dosing Records" value={stats.ex_records} sub="EX domain" color="green" />
+      </div>
+
+      {/* Domain Summary Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <SectionHeading>Domain Summary</SectionHeading>
+          <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full border border-gray-200">
+            9 CDISC Domains Indexed
+          </span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {domainSummaryList.map(dom => (
+            <div
+              key={dom.code}
+              className={`card p-4 border-l-4 ${dom.borderColor} flex flex-col justify-between hover:shadow-md transition-shadow`}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border tracking-wider uppercase inline-block bg-slate-100 text-slate-800 border-slate-300">
+                    {dom.code}
+                  </span>
+                  <div className="text-sm font-bold text-gray-900 mt-2">
+                    {dom.name}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-extrabold text-gray-900 font-mono">
+                    {dom.count.toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-gray-400 font-medium">
+                    records
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 mt-3 pt-2 border-t border-gray-100 leading-relaxed">
+                {dom.desc}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Charts row */}

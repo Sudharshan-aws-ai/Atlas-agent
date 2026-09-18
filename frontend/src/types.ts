@@ -140,8 +140,54 @@ export interface Patient360 {
   vital_signs: VitalSignRecord[];
   ecg: ECGRecord[];
   medical_history: MHRecord[];
+  findings?: {
+    type: string;
+    title: string;
+    description: string;
+    evidence: string[];
+    transaminase?: string;
+    bilirubin?: string;
+  }[];
   applicable_protocol_version: number;
   active_cut: number | null;
+  monitor?: {
+    findings: Array<{
+      finding_id: string;
+      finding_code: string;
+      severity: string;
+      rationale: string;
+      rule: string;
+      evidence: Array<{ domain: string; usubjid: string; seq: number }>;
+    }>;
+    queries: Array<{
+      query_id: string;
+      domain: string;
+      seq: number;
+      question: string;
+      reply_status: string;
+      reply_text: string;
+    }>;
+    escalations: Array<{
+      escalation_id: string;
+      code: string;
+      severity: string;
+      summary: string;
+      status: string;
+      reason_for_escalation: string;
+    }>;
+    decisions: Array<{
+      decision_id: string;
+      code: string;
+      outcome: string;
+      reason: string;
+      resubmission_outcome?: string;
+    }>;
+    actions: Array<{
+      action_id: string;
+      action_type: string;
+      detail: string;
+    }>;
+  };
 }
 
 export interface EvidenceRef {
@@ -149,13 +195,35 @@ export interface EvidenceRef {
   usubjid: string;
   seq: number;
   key: string;
+  test?: string;
+  value?: string;
+  unit?: string;
+  date?: string;
+  visit?: string;
+  term?: string;
+  severity?: string;
+  dose?: string | number;
+  medication?: string;
+  class?: string;
+  arm?: string;
+  siteid?: string;
 }
 
 export interface AskResponse {
   question_id: string;
   answer: unknown;
+  text?: string;
+  confidence?: number;
   evidence: EvidenceRef[];
   evidence_count: number;
+  steps_used?: string[];
+  calculation?: {
+    original: string;
+    converted: string;
+    conversion_factor: string;
+  } | null;
+  protocol_rule?: string | null;
+  is_trap?: boolean;
 }
 
 export interface HysLawCandidate {

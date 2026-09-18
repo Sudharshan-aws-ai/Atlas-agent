@@ -52,4 +52,64 @@ export const api = {
 
   evidenceRecord: (domain: string, usubjid: string, seq: number) =>
     fetchJSON(`/api/evidence/${domain}/${encodeURIComponent(usubjid)}/${seq}`),
+
+  // Problem 2: MONITOR methods
+  monitorRun: (cut?: number, protocol_version?: number) =>
+    fetchJSON<any>('/api/monitor/run', {
+      method: 'POST',
+      body: JSON.stringify({ cut: cut ?? null, protocol_version: protocol_version ?? null }),
+    }),
+
+  monitorTrace: (targetId: string) =>
+    fetchJSON<any>(`/api/monitor/trace/${encodeURIComponent(targetId)}`),
+
+  monitorQueries: () => fetchJSON<any[]>('/api/monitor/queries'),
+
+  monitorDecisions: () => fetchJSON<any[]>('/api/monitor/decisions'),
+
+  monitorEscalations: () => fetchJSON<any[]>('/api/monitor/escalations'),
+
+  monitorApprove: (escalationId: string, reason?: string) =>
+    fetchJSON<any>(`/api/monitor/escalations/${encodeURIComponent(escalationId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || null }),
+    }),
+
+  monitorReject: (escalationId: string, reason?: string) =>
+    fetchJSON<any>(`/api/monitor/escalations/${encodeURIComponent(escalationId)}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || null }),
+    }),
+
+  monitorClarify: (escalationId: string, question?: string) =>
+    fetchJSON<any>(`/api/monitor/escalations/${encodeURIComponent(escalationId)}/clarify`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: question || null }),
+    }),
+
+  monitorSiteFlags: () => fetchJSON<any[]>('/api/monitor/site-flags'),
+
+  monitorFindings: (cut?: number, protocol_version?: number) =>
+    fetchJSON<any[]>(`/api/monitor/findings${cut ? `?cut=${cut}&protocol_version=${protocol_version || ''}` : ''}`),
+
+  monitorFindingDetail: (findingId: string) =>
+    fetchJSON<any>(`/api/monitor/findings/${encodeURIComponent(findingId)}`),
+
+  monitorAllTrace: () => fetchJSON<any[]>('/api/monitor/trace'),
+
+  postQuery: (data: { domain: string; usubjid: string; seq: number; question: string; finding_id?: string; siteid?: string }) =>
+    fetchJSON<any>('/api/queries', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Problem 3: WATCH methods
+  watchSurveillance: (cutFrom = 1, cutTo = 12) =>
+    fetchJSON<any>('/api/watch/surveillance', {
+      method: 'POST',
+      body: JSON.stringify({ cut_from: cutFrom, cut_to: cutTo }),
+    }),
+
+  watchAdversarial: (cut?: number) =>
+    fetchJSON<any[]>(`/api/watch/adversarial${cut ? `?cut=${cut}` : ''}`),
+
+  watchExplain: (signalId: string) =>
+    fetchJSON<any>(`/api/watch/explain/${encodeURIComponent(signalId)}`),
 };
