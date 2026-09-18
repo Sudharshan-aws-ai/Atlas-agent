@@ -1,0 +1,13 @@
+{
+  "cut_used": 12,
+  "protocol_version": 3,
+  "subjects_covered": 241,
+  "unique_individuals": 240,
+  "duplicate_enrollments_detected": 1,
+  "sites_count": 12,
+  "nodes": 27178,
+  "edges": 29567,
+  "records_indexed": 26925,
+  "corrections_applied": 200,
+  "build_time_seconds": 0.1445
+}

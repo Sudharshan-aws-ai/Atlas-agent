@@ -1,0 +1,459 @@
+[
+  {
+    "question_id": "Q01",
+    "answer": 0,
+    "text": "Exactly 0 subjects at site S07 discontinued due to an adverse event.",
+    "evidence": [],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='discontinuation', category='COUNT'",
+      "Evaluating study discontinuations with reason='ADVERSE EVENT' (site_filter=S07)"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q02",
+    "answer": [
+      {
+        "domain": "LB",
+        "seq": 25,
+        "visit": "WEEK8",
+        "date": "2026-03-13",
+        "test": "ALT",
+        "value": "14.18",
+        "unit": "U/L"
+      },
+      {
+        "domain": "LB",
+        "seq": 26,
+        "visit": "WEEK8",
+        "date": "2026-03-13",
+        "test": "AST",
+        "value": "13.8",
+        "unit": "U/L"
+      },
+      {
+        "domain": "LB",
+        "seq": 27,
+        "visit": "WEEK8",
+        "date": "2026-03-13",
+        "test": "BILI",
+        "value": "0.8",
+        "unit": "mg/dL"
+      },
+      {
+        "domain": "LB",
+        "seq": 28,
+        "visit": "WEEK8",
+        "date": "2026-03-13",
+        "test": "HBA1C",
+        "value": "9.03",
+        "unit": "%"
+      },
+      {
+        "domain": "LB",
+        "seq": 29,
+        "visit": "WEEK8",
+        "date": "2026-03-13",
+        "test": "GLUC",
+        "value": "106.1",
+        "unit": "mg/dL"
+      },
+      {
+        "domain": "LB",
+        "seq": 30,
+        "visit": "WEEK8",
+        "date": "2026-03-13",
+        "test": "CREAT",
+        "value": "0.77",
+        "unit": "mg/dL"
+      }
+    ],
+    "text": "Retrieved 6 matching record(s) for subject 042-S05-003.",
+    "evidence": [
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 25
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 26
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 27
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 28
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 29
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 30
+      }
+    ],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='lookup', category='LOOKUP'",
+      "Looking up records for subject 042-S05-003",
+      "Locating anchor date for visit WEEK8"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q03",
+    "answer": [
+      "042-S05-003",
+      "042-S07-001",
+      "042-S08-014"
+    ],
+    "text": "Found 3 subject(s) meeting protocol \u00a77 Hy's law criteria: 042-S05-003, 042-S07-001, 042-S08-014.",
+    "evidence": [
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 31
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S05-003",
+        "seq": 33
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S07-001",
+        "seq": 25
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S07-001",
+        "seq": 27
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S08-014",
+        "seq": 31
+      },
+      {
+        "domain": "LB",
+        "usubjid": "042-S08-014",
+        "seq": 33
+      }
+    ],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='hys_law', category='FINDING'",
+      "Evaluating Hy's law candidates (site_filter=None)"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q04",
+    "answer": [],
+    "text": "No dosing errors were found at site S01 under protocol \u00a78 dosing rules.",
+    "evidence": [],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='dosing_error', category='TRAP'",
+      "Scanning exposure records for dosing errors (site_filter=S01)"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q05",
+    "answer": 240,
+    "text": "There are 241 USUBJID entries representing 240 unique enrolled subjects across 12 sites (accounting for duplicate cross-site enrollment).",
+    "evidence": [
+      {
+        "domain": "DM",
+        "usubjid": "042-S01-001",
+        "seq": 1
+      },
+      {
+        "domain": "DM",
+        "usubjid": "042-S02-001",
+        "seq": 1
+      },
+      {
+        "domain": "DM",
+        "usubjid": "042-S03-001",
+        "seq": 1
+      },
+      {
+        "domain": "DM",
+        "usubjid": "042-S04-001",
+        "seq": 1
+      },
+      {
+        "domain": "DM",
+        "usubjid": "042-S05-001",
+        "seq": 1
+      }
+    ],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='enrollment_count', category='COUNT'",
+      "Counting unique enrolled subjects accounting for duplicate enrollment"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q06",
+    "answer": [
+      "042-S02-010",
+      "042-S08-001",
+      "042-S09-001",
+      "042-S09-005",
+      "042-S09-012",
+      "042-S09-013",
+      "042-S11-002",
+      "042-S12-002"
+    ],
+    "text": "Found 8 subject(s) who received prohibited medications under protocol version 1: 042-S02-010, 042-S08-001, 042-S09-001, 042-S09-005, 042-S09-012, 042-S09-013, 042-S11-002, 042-S12-002.",
+    "evidence": [
+      {
+        "domain": "CM",
+        "usubjid": "042-S02-010",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S08-001",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-001",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-005",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-012",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-013",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S11-002",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S12-002",
+        "seq": 1
+      }
+    ],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='prohibited_med', category='FINDING'",
+      "Evaluating prohibited concomitant medications under Protocol Version 1"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q07",
+    "answer": [
+      "042-S02-010",
+      "042-S05-012",
+      "042-S06-006",
+      "042-S07-001",
+      "042-S08-001",
+      "042-S08-005",
+      "042-S08-013",
+      "042-S08-014",
+      "042-S09-001",
+      "042-S09-005",
+      "042-S09-012",
+      "042-S09-013",
+      "042-S11-002",
+      "042-S12-002"
+    ],
+    "text": "Found 14 subject(s) who received prohibited medications under protocol version 3: 042-S02-010, 042-S05-012, 042-S06-006, 042-S07-001, 042-S08-001, 042-S08-005, 042-S08-013, 042-S08-014, 042-S09-001, 042-S09-005, 042-S09-012, 042-S09-013, 042-S11-002, 042-S12-002.",
+    "evidence": [
+      {
+        "domain": "CM",
+        "usubjid": "042-S02-010",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S05-012",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S06-006",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S07-001",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S08-001",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S08-005",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S08-013",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S08-014",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-001",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-005",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-012",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S09-013",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S11-002",
+        "seq": 1
+      },
+      {
+        "domain": "CM",
+        "usubjid": "042-S12-002",
+        "seq": 1
+      }
+    ],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='prohibited_med', category='FINDING'",
+      "Evaluating prohibited concomitant medications under Protocol Version 3"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q08",
+    "answer": [
+      "042-S02-004"
+    ],
+    "text": "Found 1 subject(s) with miscoded serious adverse events: 042-S02-004.",
+    "evidence": [
+      {
+        "domain": "AE",
+        "usubjid": "042-S02-004",
+        "seq": 1
+      }
+    ],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='miscoded_sae', category='FINDING'",
+      "Evaluating AE records for miscoded SAEs (site_filter=None)"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q09",
+    "answer": [
+      {
+        "domain": "VS",
+        "seq": 4,
+        "visit": "BASELINE",
+        "date": "2026-01-31",
+        "test": "SYSBP",
+        "value": "122.0",
+        "unit": "mmHg"
+      },
+      {
+        "domain": "VS",
+        "seq": 5,
+        "visit": "BASELINE",
+        "date": "2026-01-31",
+        "test": "DIABP",
+        "value": "75.0",
+        "unit": "mmHg"
+      },
+      {
+        "domain": "VS",
+        "seq": 6,
+        "visit": "BASELINE",
+        "date": "2026-01-31",
+        "test": "PULSE",
+        "value": "65.0",
+        "unit": "bpm"
+      }
+    ],
+    "text": "Retrieved 3 matching record(s) for subject 042-S01-001.",
+    "evidence": [
+      {
+        "domain": "VS",
+        "usubjid": "042-S01-001",
+        "seq": 4
+      },
+      {
+        "domain": "VS",
+        "usubjid": "042-S01-001",
+        "seq": 5
+      },
+      {
+        "domain": "VS",
+        "usubjid": "042-S01-001",
+        "seq": 6
+      }
+    ],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='lookup', category='LOOKUP'",
+      "Looking up records for subject 042-S01-001",
+      "Locating anchor date for visit BASELINE"
+    ],
+    "tokens_used": 0
+  },
+  {
+    "question_id": "Q10",
+    "answer": [],
+    "text": "No subjects at site S02 met the protocol-specified Hy's law criteria (transaminase > 3x ULN and total bilirubin > 2x ULN within 14 days without pre-existing hepatic disease).",
+    "evidence": [],
+    "confidence": 1.0,
+    "steps_used": [
+      "Parsed question: intent_type='hys_law', category='TRAP'",
+      "Evaluating Hy's law candidates (site_filter=S02)"
+    ],
+    "tokens_used": 0
+  }
+]
