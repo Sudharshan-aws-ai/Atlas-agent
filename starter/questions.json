@@ -1,0 +1,52 @@
+[
+  {
+    "question_id": "Q01",
+    "text": "How many subjects at site S07 discontinued due to an adverse event?",
+    "category": "COUNT"
+  },
+  {
+    "question_id": "Q02",
+    "text": "List the laboratory and adverse-event records for 042-S05-003 within 7 days of the WEEK8 visit.",
+    "category": "LOOKUP"
+  },
+  {
+    "question_id": "Q03",
+    "text": "Which subjects meet the Hy's law criteria?",
+    "category": "FINDING"
+  },
+  {
+    "question_id": "Q04",
+    "text": "Which subjects at site S01 received a wrong dose?",
+    "category": "TRAP"
+  },
+  {
+    "question_id": "Q05",
+    "text": "How many unique subjects are enrolled in the study across all sites?",
+    "category": "COUNT"
+  },
+  {
+    "question_id": "Q06",
+    "text": "Which subjects received a prohibited concomitant medication under protocol version 1?",
+    "category": "FINDING"
+  },
+  {
+    "question_id": "Q07",
+    "text": "Which subjects received a prohibited concomitant medication under protocol version 3?",
+    "category": "FINDING"
+  },
+  {
+    "question_id": "Q08",
+    "text": "Which subjects had a serious adverse event that was miscoded with AESER='N'?",
+    "category": "FINDING"
+  },
+  {
+    "question_id": "Q09",
+    "text": "List all vital signs records for subject 042-S01-001 at the BASELINE visit.",
+    "category": "LOOKUP"
+  },
+  {
+    "question_id": "Q10",
+    "text": "Which subjects at site S02 met the Hy's law criteria?",
+    "category": "TRAP"
+  }
+]
