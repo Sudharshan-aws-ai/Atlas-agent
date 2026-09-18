@@ -33,7 +33,7 @@ echo ""
 echo "Starting FastAPI backend on http://localhost:8000 ..."
 echo "  API docs: http://localhost:8000/docs"
 echo ""
-echo "Starting Vite dev server on http://localhost:5173 ..."
+echo "Starting Vite dev server on http://localhost:8080 ..."
 echo ""
 
 # Start backend in background

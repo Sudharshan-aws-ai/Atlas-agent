@@ -361,6 +361,25 @@ class StudyGraph:
             for m in self.get_subject_mh(usubjid)
         ]
 
+        # Clinical findings for this patient
+        from .rules import RuleEngine
+        findings_out = []
+        hys_eval = RuleEngine.evaluate_hys_law_for_subject(usubjid, self)
+        if hys_eval.is_candidate:
+            evidence_str = []
+            if hys_eval.transaminase_record:
+                evidence_str.append(f"LB seq {hys_eval.transaminase_record.seq} ({hys_eval.transaminase_record.testcd})")
+            if hys_eval.bilirubin_record:
+                evidence_str.append(f"LB seq {hys_eval.bilirubin_record.seq} (BILI)")
+            findings_out.append({
+                "type": "HYS_LAW",
+                "title": "Potential Hy's Law (Liver-Damage Pattern)",
+                "description": hys_eval.rationale,
+                "evidence": evidence_str,
+                "transaminase": f"{hys_eval.transaminase_record.testcd} — {hys_eval.transaminase_record.orres} {hys_eval.transaminase_record.orresu}" if hys_eval.transaminase_record else "",
+                "bilirubin": f"BILI — {hys_eval.bilirubin_record.orres} {hys_eval.bilirubin_record.orresu}" if hys_eval.bilirubin_record else "",
+            })
+
         return {
             "usubjid": usubjid,
             "siteid": subj.siteid,
@@ -382,6 +401,8 @@ class StudyGraph:
             "vital_signs": vs_out,
             "ecg": eg_out,
             "medical_history": mh_out,
+            "findings": findings_out,
             "applicable_protocol_version": self.protocol_version,
             "active_cut": self.current_cut,
         }
+

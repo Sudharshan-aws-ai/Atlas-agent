@@ -117,7 +117,7 @@
       "042-S07-001",
       "042-S08-014"
     ],
-    "text": "Found 3 subject(s) meeting protocol \u00a77 Hy's law criteria: 042-S05-003, 042-S07-001, 042-S08-014.",
+    "text": "Found 3 subject(s) meeting protocol \u00a77 Hy's law criteria: 042-S05-003, 042-S07-001, 042-S08-014.\n\nAnswer:\n\u2022 042-S05-003\n\u2022 042-S07-001\n\u2022 042-S08-014\n\nEvidence:\nEach subject has supporting ALT and bilirubin laboratory records satisfying the applicable protocol criteria.",
     "evidence": [
       {
         "domain": "LB",
@@ -160,7 +160,7 @@
   {
     "question_id": "Q04",
     "answer": [],
-    "text": "No dosing errors were found at site S01 under protocol \u00a78 dosing rules.",
+    "text": "No dosing errors were found at site S01 under protocol \u00a78 dosing rules.\n\nAnswer:\n[]\n\nEvidence:\nNo supporting dosing-error record was found at site S01.\n\nReason:\nATLAS does not infer or guess a dosing error without supporting study records.",
     "evidence": [],
     "confidence": 1.0,
     "steps_used": [
