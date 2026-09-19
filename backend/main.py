@@ -15,13 +15,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from stage1.atlas import Atlas
 from stage1.rules import RuleEngine
 from stage2.crew import ReviewCrew
 from stage2.monitor import MonitorEngine
-from stage3.watch import WatchEngine
+from stage3.watch import StudyWatch, WatchEngine
 from starter.schemas import Answer, Question, QuestionCategory
 
 # ---------------------------------------------------------------------------
@@ -33,27 +35,31 @@ atlas_instance: Optional[Atlas] = None
 crew_instance: Optional[ReviewCrew] = None
 monitor_instance: Optional[MonitorEngine] = None
 watch_instance: Optional[WatchEngine] = None
+study_watch_instance: Optional[StudyWatch] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Build the study graph on startup and initialize crew, monitor and watch engines."""
-    global atlas_instance, crew_instance, monitor_instance, watch_instance
+    global atlas_instance, crew_instance, monitor_instance, watch_instance, study_watch_instance
     atlas_instance = Atlas(DATA_DIR)
     crew_instance = ReviewCrew(atlas=atlas_instance, data_dir=DATA_DIR)
     monitor_instance = MonitorEngine(DATA_DIR, graph=atlas_instance.graph)
     watch_instance = WatchEngine(DATA_DIR)
+    study_watch_instance = StudyWatch(data_dir=DATA_DIR, crew=crew_instance)
     print(f"[ATLAS] Graph built. Stats: {atlas_instance.graph.stats}", flush=True)
     yield
     atlas_instance = None
     crew_instance = None
     monitor_instance = None
     watch_instance = None
+    study_watch_instance = None
 
 
 def _require_atlas() -> Atlas:
+    global atlas_instance
     if atlas_instance is None:
-        raise HTTPException(status_code=503, detail="Graph not yet initialized")
+        atlas_instance = Atlas(DATA_DIR)
     return atlas_instance
 
 
@@ -80,6 +86,14 @@ def _require_watch() -> WatchEngine:
     return watch_instance
 
 
+def _require_study_watch() -> StudyWatch:
+    global study_watch_instance, crew_instance
+    if study_watch_instance is None:
+        crew = _require_crew()
+        study_watch_instance = StudyWatch(DATA_DIR, crew=crew)
+    return study_watch_instance
+
+
 app = FastAPI(
     title="ATLAS Study Sentinel API",
     version="1.0.0",
@@ -103,8 +117,9 @@ app.add_middleware(
 
 
 def _require_atlas() -> Atlas:
+    global atlas_instance
     if atlas_instance is None:
-        raise HTTPException(status_code=503, detail="Graph not yet initialized")
+        atlas_instance = Atlas(DATA_DIR)
     return atlas_instance
 
 
@@ -428,11 +443,12 @@ def get_evidence_record(domain: str, usubjid: str, seq: int) -> Dict[str, Any]:
 
 @app.post("/api/rebuild")
 def rebuild(req: RebuildRequest) -> Dict[str, Any]:
-    global monitor_instance, watch_instance
+    global monitor_instance, watch_instance, study_watch_instance
     a = _require_atlas()
     stats = a.rebuild(cut=req.cut)
     monitor_instance = MonitorEngine(DATA_DIR, graph=a.graph)
     watch_instance = WatchEngine(DATA_DIR)
+    study_watch_instance = None
     return {"status": "rebuilt", "stats": stats}
 
 
@@ -552,6 +568,15 @@ def run_monitor(req: MonitorRunRequest) -> Dict[str, Any]:
 
     report = crew.run_cycle(cut=active_cut, protocol_version=active_proto)
     report_dict = report.to_dict()
+
+    # Include all queries from memory (including Hospital Management sent queries)
+    all_mem_queries = [q.to_dict() for q in crew.memory.queries_by_key.values()]
+    if all_mem_queries:
+        seen_qids = {q["query_id"] for q in report_dict.get("queries", [])}
+        for mq in all_mem_queries:
+            if mq["query_id"] not in seen_qids:
+                report_dict["queries"].append(mq)
+                seen_qids.add(mq["query_id"])
 
     # Maintain backward compatibility fields for existing UI components
     report_dict["decisions"] = report_dict["human_gate_decisions"]
@@ -695,47 +720,268 @@ def get_monitor_queries() -> List[Dict[str, Any]]:
 
 class CreateQueryRequest(BaseModel):
     finding_id: Optional[str] = "MANUAL"
-    domain: str
+    domain: Optional[str] = None
     usubjid: str
-    seq: int
-    question: str
+    seq: Optional[int] = None
+    question: Optional[str] = None
+    message: Optional[str] = None
     siteid: Optional[str] = None
+    hospital: Optional[str] = None
+    issue: Optional[str] = None
+    record_ref: Optional[str] = None
+    date: Optional[str] = None
+    time: Optional[str] = None
 
 
 @app.post("/queries")
 @app.post("/api/queries")
 def post_query(req: CreateQueryRequest) -> Dict[str, Any]:
-    """Posts a new EDC query via Data Manager interface with deduplication."""
+    """
+    Posts a new EDC query via Data Manager interface to Hospital Management.
+    Enforces duplicate query prevention using MONITOR memory rules and tracks
+    initial status: 'SENT TO HOSPITAL MANAGEMENT'.
+    """
+    try:
+        crew = _require_crew()
+        from stage2.models import Query, RecordRef
+        import uuid
+        from datetime import datetime
+        
+        now = datetime.now()
+        cur_date = req.date or now.strftime('%d %b %Y')
+        cur_time = req.time or now.strftime('%I:%M %p')
+        
+        # Derive domain and seq from record_ref if not provided directly
+        raw_rec = req.record_ref or ""
+        domain = req.domain or ""
+        seq = req.seq
+        if not domain and raw_rec:
+            parts = raw_rec.replace("-", " ").replace("Seq", " ").split()
+            if parts:
+                domain = parts[0]
+            if seq is None and len(parts) > 1 and parts[-1].isdigit():
+                seq = int(parts[-1])
+        domain = (domain or "MANUAL").upper()
+        seq = seq if seq is not None else 1
+        
+        record_ref = req.record_ref or f"{domain} Seq {seq}"
+        usubjid = req.usubjid.strip().upper()
+        siteid = req.hospital or req.siteid
+        if not siteid:
+            subj_rec = crew.atlas.graph.get_subject(usubjid) if hasattr(crew, 'atlas') and hasattr(crew.atlas, 'graph') else None
+            siteid = subj_rec.siteid if subj_rec else "S01"
+            
+        issue = (req.issue or "DATA_DISCREPANCY").strip()
+        question_text = req.message or req.question or f"Please confirm {record_ref} for subject {usubjid}."
+        
+        # Duplicate Query Protection: Check memory
+        # key format: domain|usubjid|seq|issue
+        if crew.memory.is_query_issued(domain, usubjid, seq, issue_code=issue):
+            key = f"{domain}|{usubjid}|{seq}|{issue}"
+            existing = crew.memory.queries_by_key.get(key)
+            return {
+                "duplicate": True,
+                "status": "EXISTING_QUERY_FOUND",
+                "message": "Existing Query Found. Duplicate query creation prevented.",
+                "hospital": siteid,
+                "subject": usubjid,
+                "record": record_ref,
+                "issue": issue,
+                "existing_query": existing.to_dict() if existing else None,
+            }
+            
+        qid = f"Q-{uuid.uuid4().hex[:8].upper()}"
+        q = Query(
+            query_id=qid,
+            finding_id=req.finding_id or "MANUAL",
+            domain=domain,
+            usubjid=usubjid,
+            siteid=siteid,
+            seq=seq,
+            question=question_text,
+            reply_status="SENT TO HOSPITAL MANAGEMENT",
+            reply_text="Dispatched to hospital management and site coordinator. Awaiting review.",
+            cut=getattr(getattr(crew, 'graph', None), 'current_cut', 12) or 12,
+            timestamp=now.isoformat(),
+            issue=issue,
+            record_ref=record_ref,
+            date=cur_date,
+            time=cur_time,
+            evidence=[RecordRef(domain=domain, usubjid=usubjid, seq=seq)],
+        )
+        
+        # Save into persistent memory
+        crew.memory.register_query(q, issue_code=issue)
+        
+        # Record into live audit trace
+        crew._record_trace(
+            node="data_manager",
+            finding_id=q.finding_id,
+            input_summary=f"Query {q.query_id} dispatched to Hospital {siteid} for {usubjid} ({record_ref})",
+            rule="Data Manager Query Sent to Hospital Management",
+            evidence=q.evidence,
+            decision="SENT_TO_HOSPITAL_MANAGEMENT",
+            output_action=f"Dispatched: {q.question}",
+            details={
+                "query_id": q.query_id,
+                "hospital": siteid,
+                "subject": usubjid,
+                "record": record_ref,
+                "issue": issue,
+                "date": cur_date,
+                "time": cur_time,
+                "status": "SENT TO HOSPITAL MANAGEMENT",
+            },
+        )
+        
+        return {
+            "duplicate": False,
+            "success": True,
+            "status": "SENT TO HOSPITAL MANAGEMENT",
+            "message": "Query successfully sent to hospital management.",
+            "query_id": q.query_id,
+            "hospital": siteid,
+            "subject": usubjid,
+            "record": record_ref,
+            "issue": issue,
+            "message_text": question_text,
+            "date": cur_date,
+            "time": cur_time,
+            "query": q.to_dict(),
+        }
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to save query. Please check query details and try again."
+        )
+
+
+@app.get("/api/patient-disease-graph")
+@app.get("/patient-disease-graph")
+def get_patient_disease_graph() -> Dict[str, Any]:
+    """
+    Feature 1: Constructs the dynamic Patient <-> Disease Graph from actual dataset records.
+    Sources:
+    - Medical History (MH domain, MH.csv)
+    - Adverse Events (AE domain, AE.csv)
+    """
     crew = _require_crew()
-    from stage2.models import Query, RecordRef
-    from stage2.crew import datetime
-    import uuid
-    qid = f"Q-{uuid.uuid4().hex[:8].upper()}"
-    q = Query(
-        query_id=qid,
-        finding_id=req.finding_id or "MANUAL",
-        domain=req.domain.upper(),
-        usubjid=req.usubjid.upper(),
-        seq=req.seq,
-        question=req.question,
-        siteid=req.siteid or (crew.atlas.graph.get_subject(req.usubjid.upper()).siteid if crew.atlas.graph.get_subject(req.usubjid.upper()) else "S01"),
-        reply_status="OPEN",
-        reply_text="Awaiting site investigator response",
-        created_timestamp=datetime.now().isoformat(),
-        evidence=[RecordRef(domain=req.domain.upper(), usubjid=req.usubjid.upper(), seq=req.seq)],
-    )
-    crew.memory.register_query(q)
-    crew._record_trace(
-        node="data_manager",
-        finding_id=q.finding_id,
-        input_summary=f"POST /queries {q.query_id} for {q.usubjid} {q.domain} seq {q.seq}",
-        rule="Data Manager Query Raised",
-        evidence=q.evidence,
-        decision="QUERY_RAISED",
-        output_action=f"EDC Query transmitted: {q.question}",
-        details={"query_id": q.query_id, "question": q.question},
-    )
-    return q.to_dict()
+    graph = crew.graph
+    
+    disease_map: Dict[str, Dict[str, Any]] = {}
+    patient_map: Dict[str, Dict[str, Any]] = {}
+    relationships: List[Dict[str, Any]] = []
+    
+    subject_ids = sorted(graph.get_subject_ids())
+    
+    for usubjid in subject_ids:
+        siteid = graph.get_subject_site(usubjid) or "S01"
+        patient_map[usubjid] = {
+            "usubjid": usubjid,
+            "siteid": siteid,
+            "diseases": set(),
+            "records_count": 0,
+        }
+        
+        # 1. Medical History Records (Pre-existing diseases)
+        for mh in graph.get_subject_mh(usubjid):
+            disease = (mh.term or "").strip()
+            if not disease:
+                continue
+            patient_map[usubjid]["diseases"].add(disease)
+            patient_map[usubjid]["records_count"] += 1
+            
+            if disease not in disease_map:
+                disease_map[disease] = {
+                    "name": disease,
+                    "category": "Medical History",
+                    "domain": "MH",
+                    "patients": set(),
+                    "records": [],
+                }
+            disease_map[disease]["patients"].add(usubjid)
+            
+            rel = {
+                "usubjid": usubjid,
+                "siteid": siteid,
+                "disease": disease,
+                "domain": "MH",
+                "seq": mh.seq,
+                "record_ref": f"MH Seq {mh.seq}",
+                "category": "Medical History",
+                "cut_available": mh.cut_available,
+                "evidence": f"Subject {usubjid} has medical history '{disease}' recorded in MH Seq {mh.seq} (Cut {mh.cut_available}).",
+            }
+            relationships.append(rel)
+            disease_map[disease]["records"].append(rel)
+            
+        # 2. Adverse Event Records (Trial-emergent disease conditions)
+        for ae in graph.get_subject_aes(usubjid):
+            disease = (ae.term or "").strip()
+            if not disease:
+                continue
+            patient_map[usubjid]["diseases"].add(disease)
+            patient_map[usubjid]["records_count"] += 1
+            
+            if disease not in disease_map:
+                disease_map[disease] = {
+                    "name": disease,
+                    "category": "Adverse Event",
+                    "domain": "AE",
+                    "patients": set(),
+                    "records": [],
+                }
+            disease_map[disease]["patients"].add(usubjid)
+            
+            rel = {
+                "usubjid": usubjid,
+                "siteid": siteid,
+                "disease": disease,
+                "domain": "AE",
+                "seq": ae.seq,
+                "record_ref": f"AE Seq {ae.seq}",
+                "category": "Adverse Event",
+                "cut_available": ae.cut_available,
+                "severity": ae.sev,
+                "serious": ae.ser,
+                "hospitalized": ae.hosp,
+                "evidence": f"Subject {usubjid} experienced '{disease}' (AE Seq {ae.seq}, Serious={ae.ser}, Hosp={ae.hosp}).",
+            }
+            relationships.append(rel)
+            disease_map[disease]["records"].append(rel)
+
+    patients_list = [
+        {
+            "usubjid": p["usubjid"],
+            "siteid": p["siteid"],
+            "diseases": sorted(list(p["diseases"])),
+            "records_count": p["records_count"],
+        }
+        for p in patient_map.values()
+    ]
+    
+    diseases_list = [
+        {
+            "name": d["name"],
+            "category": d["category"],
+            "domain": d["domain"],
+            "patient_count": len(d["patients"]),
+            "patients": sorted(list(d["patients"])),
+            "records": d["records"],
+        }
+        for d in sorted(disease_map.values(), key=lambda x: len(x["patients"]), reverse=True)
+    ]
+    
+    return {
+        "total_patients": len(patients_list),
+        "total_diseases": len(diseases_list),
+        "total_relationships": len(relationships),
+        "patients": patients_list,
+        "diseases": diseases_list,
+        "relationships": relationships,
+    }
 
 
 @app.get("/api/monitor/findings")
@@ -1042,6 +1288,11 @@ class WatchSurveillanceRequest(BaseModel):
     cut_to: int = 12
 
 
+class WatchRunPeriodRequest(BaseModel):
+    cut_from: int = 1
+    cut_to: int = 12
+
+
 @app.post("/api/watch/surveillance")
 def run_watch_surveillance(req: WatchSurveillanceRequest) -> Dict[str, Any]:
     """Executes longitudinal surveillance across cuts (NEW, CHANGED, REPEATED, PREVIOUSLY_SEEN)."""
@@ -1057,10 +1308,124 @@ def get_watch_adversarial(cut: Optional[int] = None) -> List[Dict[str, Any]]:
     return [s.to_dict() for s in signals]
 
 
+@app.post("/api/watch/run-period")
+def run_watch_period(req: Optional[WatchRunPeriodRequest] = None) -> Dict[str, Any]:
+    """Executes unattended surveillance across specified cuts (default cuts 1..12) and returns SurveillanceReport."""
+    sw = _require_study_watch()
+    start_c = req.cut_from if req else 1
+    end_c = req.cut_to if req else 12
+    report = sw.run_period(range(start_c, end_c + 1))
+    return report.to_dict()
+
+
+@app.get("/api/watch/report")
+def get_watch_report() -> Dict[str, Any]:
+    """Returns the latest 12-cut surveillance report, running surveillance if not yet generated."""
+    sw = _require_study_watch()
+    if not sw.reports_history:
+        report = sw.run_period(range(1, 13))
+    else:
+        report = sw.reports_history[-1]
+    return report.to_dict()
+
+
+@app.get("/api/watch/timeline")
+def get_watch_timeline() -> List[Dict[str, Any]]:
+    """Returns cut-by-cut surveillance timeline summaries."""
+    sw = _require_study_watch()
+    if not sw.timeline:
+        sw.run_period(range(1, 13))
+    return sw.timeline
+
+
+@app.get("/api/watch/site-risk")
+def get_watch_site_risk() -> List[Dict[str, Any]]:
+    """Returns dynamically stratified site risk rankings across study centers."""
+    sw = _require_study_watch()
+    if not sw.timeline:
+        sw.run_period(range(1, 13))
+    return sw.compute_site_risk()
+
+
+@app.get("/api/watch/decisions")
+def get_watch_decisions() -> List[Dict[str, Any]]:
+    """Returns all structured decisions made by WATCH with full traceable evidence."""
+    sw = _require_study_watch()
+    return sw.get_decision_center()
+
+
+@app.get("/api/watch/escalations")
+def get_watch_escalations() -> List[Dict[str, Any]]:
+    """Returns longitudinal human escalation tracker state across cuts."""
+    sw = _require_study_watch()
+    return sw.get_escalations_tracker_list()
+
+
 @app.get("/api/watch/explain/{signal_id}")
 def explain_watch_signal(signal_id: str) -> Dict[str, Any]:
-    """Explains an anomaly or surveillance signal strictly from recorded trace."""
+    """Explains an anomaly, decision, or surveillance signal strictly from live recorded trace."""
+    sw = _require_study_watch()
+    
+    # First check if signal_id is a mapped Decision ID (e.g. D-001, D-008, D-012)
+    decisions = sw.get_decision_center()
+    matched_dec = next((d for d in decisions if d["decision_id"].upper() == signal_id.upper() or d["raw_id"].upper() == signal_id.upper()), None)
+    
+    if matched_dec:
+        return {
+            "decision_id": matched_dec["decision_id"],
+            "raw_id": matched_dec["raw_id"],
+            "what": matched_dec["what"],
+            "evidence": matched_dec["evidence"],
+            "evidence_lines": matched_dec["evidence_lines"],
+            "alternatives": matched_dec["alternatives"],
+            "why": matched_dec["why"],
+            "consistent_with_trace": True,
+            "node": "watch",
+            "cut": matched_dec["cut"],
+            "status": matched_dec["status"],
+            "target": matched_dec["target"],
+            "decision_type": matched_dec["decision_type"],
+            "severity": matched_dec["severity"],
+            "action": matched_dec["action"],
+            "trace_path": matched_dec["trace_path"],
+            "is_false_warning_prevented": matched_dec["is_false_warning_prevented"],
+            "found_in_trace": True,
+        }
+
+    exp = sw.explain(signal_id)
+    if exp.consistent_with_trace and exp.status != "NOT_FOUND":
+        res = exp.to_dict()
+        res["found_in_trace"] = True
+        return res
+
+    # Fallback to legacy WatchEngine trace
     w = _require_watch()
-    return w.explain(signal_id)
+    legacy_exp = w.explain(signal_id)
+    if legacy_exp.get("found_in_trace"):
+        return legacy_exp
+
+    return exp.to_dict()
+
+
+
+# ---------------------------------------------------------------------------
+# Static Frontend Serving & Single Unique Localhost Link Support
+# ---------------------------------------------------------------------------
+_frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+if os.path.isdir(_frontend_dist):
+    _assets_dir = os.path.join(_frontend_dist, "assets")
+    if os.path.isdir(_assets_dir):
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa_frontend(full_path: str):
+        # Allow API routes and Swagger docs to pass through
+        if full_path.startswith(("api", "docs", "openapi.json", "redoc", "findings", "queries", "escalations", "compliance", "trace", "memory", "review-report", "patients")):
+            raise HTTPException(status_code=404, detail=f"Endpoint '{full_path}' not found")
+        target_file = os.path.join(_frontend_dist, full_path)
+        if full_path and os.path.isfile(target_file):
+            return FileResponse(target_file)
+        return FileResponse(os.path.join(_frontend_dist, "index.html"))
+
 
 

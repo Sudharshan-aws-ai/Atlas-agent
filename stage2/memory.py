@@ -86,6 +86,10 @@ class MonitorMemory:
         """Gets the recorded rejection reason for a previously rejected escalation."""
         return self.rejected_escalations.get(f"{code}|{usubjid}")
 
+    def record_rejection(self, code: str, usubjid: str, reason: str = "") -> None:
+        """Records an escalation rejection in memory."""
+        self.rejected_escalations[f"{code}|{usubjid}"] = reason
+
     def register_escalation(self, escalation: EscalationDraft) -> None:
         """Registers a drafted or submitted escalation."""
         key = f"{escalation.code}|{escalation.usubjid}"

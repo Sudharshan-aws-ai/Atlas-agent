@@ -65,6 +65,7 @@ class StudyGraph:
         self.nodes_count: int = 0
         self.edges_count: int = 0
         self.stats: Dict[str, Any] = {}
+        self.applied_corrections: List[Dict[str, Any]] = []
 
     def build(self, cut: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -91,6 +92,7 @@ class StudyGraph:
         self.mh_by_subject.clear()
         self.by_subject_visit.clear()
         self.by_subject_date.clear()
+        self.applied_corrections = [c for c in self.loader.corrections if cut is None or c.get("cut", 999) <= cut]
 
         # 1. Index Subjects
         self.subjects = dataset.subjects
@@ -196,6 +198,164 @@ class StudyGraph:
             "build_time_seconds": build_time_sec,
         }
         return self.stats
+
+    def incremental_update(self, new_cut: int) -> Dict[str, Any]:
+        """
+        Incrementally updates the existing study knowledge graph for a new cut.
+        Does NOT rebuild the entire graph from scratch.
+        Loads newly available records (cut_available == new_cut), applies scheduled
+        corrections for new_cut, updates specific records/indexes, and identifies affected subjects.
+        """
+        t0 = perf_counter()
+        prev_cut = self.current_cut or 1
+        self.current_cut = new_cut
+
+        # Update protocol version based on cut
+        max_known_cut = max(self.loader.cuts_info.keys()) if self.loader.cuts_info else 12
+        self.protocol_version = self.loader.cuts_info.get(new_cut if new_cut is not None else max_known_cut, 3)
+
+        affected_subjects: Set[str] = set()
+        new_records_count = 0
+        corrections_applied = 0
+        # Record scheduled corrections for new_cut
+        for corr in self.loader.corrections:
+            if corr.get("cut") == new_cut and corr not in self.applied_corrections:
+                self.applied_corrections.append(corr)
+
+        # Load visible dataset as of new_cut
+        new_dataset = self.loader.load(cut=new_cut)
+
+        # 1. Update/Add Subjects
+        for usubjid, subj in new_dataset.subjects.items():
+            if usubjid not in self.subjects:
+                self.subjects[usubjid] = subj
+                site = subj.siteid
+                self.site_to_subjects[site].add(usubjid)
+                self.subject_to_site[usubjid] = site
+                self.records_by_ref[("DM", usubjid, 1)] = subj
+                affected_subjects.add(usubjid)
+                new_records_count += 1
+
+        # 2. Update/Add LB
+        for lb in new_dataset.lb:
+            ref_key = ("LB", lb.usubjid, lb.seq)
+            if ref_key not in self.records_by_ref:
+                self.labs_by_subject[lb.usubjid].append(lb)
+                self.records_by_ref[ref_key] = lb
+                if lb.visit:
+                    self.by_subject_visit[(lb.usubjid, lb.visit)].append(lb)
+                if lb.dtc.iso:
+                    self.by_subject_date[(lb.usubjid, lb.dtc.iso)].append(lb)
+                affected_subjects.add(lb.usubjid)
+                new_records_count += 1
+            else:
+                existing_rec = self.records_by_ref[ref_key]
+                if getattr(existing_rec, 'orres', None) != lb.orres:
+                    self.records_by_ref[ref_key] = lb
+                    subj_labs = self.labs_by_subject[lb.usubjid]
+                    for idx, r in enumerate(subj_labs):
+                        if r.seq == lb.seq:
+                            subj_labs[idx] = lb
+                            break
+                    affected_subjects.add(lb.usubjid)
+                    corrections_applied += 1
+
+        # 3. Update/Add AE
+        for ae in new_dataset.ae:
+            ref_key = ("AE", ae.usubjid, ae.seq)
+            if ref_key not in self.records_by_ref:
+                self.aes_by_subject[ae.usubjid].append(ae)
+                self.records_by_ref[ref_key] = ae
+                if ae.stdtc.iso:
+                    self.by_subject_date[(ae.usubjid, ae.stdtc.iso)].append(ae)
+                affected_subjects.add(ae.usubjid)
+                new_records_count += 1
+
+        # 4. Update/Add EX
+        for ex in new_dataset.ex:
+            ref_key = ("EX", ex.usubjid, ex.seq)
+            if ref_key not in self.records_by_ref:
+                self.ex_by_subject[ex.usubjid].append(ex)
+                self.records_by_ref[ref_key] = ex
+                if ex.visit:
+                    self.by_subject_visit[(ex.usubjid, ex.visit)].append(ex)
+                if ex.stdtc.iso:
+                    self.by_subject_date[(ex.usubjid, ex.stdtc.iso)].append(ex)
+                affected_subjects.add(ex.usubjid)
+                new_records_count += 1
+
+        # 5. Update/Add CM
+        for cm in new_dataset.cm:
+            ref_key = ("CM", cm.usubjid, cm.seq)
+            if ref_key not in self.records_by_ref:
+                self.cm_by_subject[cm.usubjid].append(cm)
+                self.records_by_ref[ref_key] = cm
+                if cm.stdtc.iso:
+                    self.by_subject_date[(cm.usubjid, cm.stdtc.iso)].append(cm)
+                affected_subjects.add(cm.usubjid)
+                new_records_count += 1
+
+        # 6. Update/Add DS
+        for ds in new_dataset.ds:
+            ref_key = ("DS", ds.usubjid, ds.seq)
+            if ref_key not in self.records_by_ref:
+                self.ds_by_subject[ds.usubjid].append(ds)
+                self.records_by_ref[ref_key] = ds
+                if ds.stdtc.iso:
+                    self.by_subject_date[(ds.usubjid, ds.stdtc.iso)].append(ds)
+                affected_subjects.add(ds.usubjid)
+                new_records_count += 1
+
+        # 7. Update/Add VS
+        for vs in new_dataset.vs:
+            ref_key = ("VS", vs.usubjid, vs.seq)
+            if ref_key not in self.records_by_ref:
+                self.vs_by_subject[vs.usubjid].append(vs)
+                self.records_by_ref[ref_key] = vs
+                if vs.visit:
+                    self.by_subject_visit[(vs.usubjid, vs.visit)].append(vs)
+                if vs.dtc.iso:
+                    self.by_subject_date[(vs.usubjid, vs.dtc.iso)].append(vs)
+                affected_subjects.add(vs.usubjid)
+                new_records_count += 1
+
+        # 8. Update/Add EG
+        for eg in new_dataset.eg:
+            ref_key = ("EG", eg.usubjid, eg.seq)
+            if ref_key not in self.records_by_ref:
+                self.eg_by_subject[eg.usubjid].append(eg)
+                self.records_by_ref[ref_key] = eg
+                if eg.visit:
+                    self.by_subject_visit[(eg.usubjid, eg.visit)].append(eg)
+                if eg.dtc.iso:
+                    self.by_subject_date[(eg.usubjid, eg.dtc.iso)].append(eg)
+                affected_subjects.add(eg.usubjid)
+                new_records_count += 1
+
+        # 9. Update/Add MH
+        for mh in new_dataset.mh:
+            ref_key = ("MH", mh.usubjid, mh.seq)
+            if ref_key not in self.records_by_ref:
+                self.mh_by_subject[mh.usubjid].append(mh)
+                self.records_by_ref[ref_key] = mh
+                affected_subjects.add(mh.usubjid)
+                new_records_count += 1
+
+        elapsed = (perf_counter() - t0) * 1000.0
+        self.stats["last_incremental_update_ms"] = round(elapsed, 2)
+        self.stats["current_cut"] = new_cut
+        self.stats["protocol_version"] = self.protocol_version
+
+        return {
+            "prev_cut": prev_cut,
+            "new_cut": new_cut,
+            "protocol_version": self.protocol_version,
+            "new_records_count": new_records_count,
+            "corrections_applied": corrections_applied,
+            "affected_subjects_count": len(affected_subjects),
+            "affected_subjects": sorted(affected_subjects),
+            "elapsed_ms": round(elapsed, 2),
+        }
 
     # Query Helper Methods
     def get_subject_ids(self, site_filter: Optional[str] = None) -> List[str]:

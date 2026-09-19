@@ -52,6 +52,7 @@ interface QueryItem {
   domain: string;
   usubjid: string;
   siteid?: string;
+  hospital?: string;
   seq: number;
   question: string;
   reply_status: string;
@@ -59,6 +60,10 @@ interface QueryItem {
   cut?: number;
   created_timestamp?: string;
   evidence?: Array<{ domain: string; usubjid: string; seq: number }>;
+  record_ref?: string;
+  issue?: string;
+  date?: string;
+  time?: string;
 }
 
 interface DeviationItem {
@@ -169,13 +174,52 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
   // Patient 360 quick lookup
   const [p360Subject, setP360Subject] = useState('042-S02-004');
 
-  // Manual query modal
+  // Dynamic Date & Time Helper
+  const getFormattedCurrentDateTime = () => {
+    const now = new Date();
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const curDate = `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+    let hours = now.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const curTime = `${hours}:${minutes} ${ampm}`;
+    return { date: curDate, time: curTime };
+  };
+
+  // Hospital Query Modal State
   const [showQueryModal, setShowQueryModal] = useState(false);
-  const [newQueryData, setNewQueryData] = useState({
-    domain: 'AE',
-    usubjid: '042-S11-005',
-    seq: 1,
-    question: 'AE start date precedes first study drug exposure date. Please verify against hospital source records.',
+  const [querySending, setQuerySending] = useState(false);
+  const [queryNotification, setQueryNotification] = useState<{
+    type: 'success' | 'duplicate' | 'error';
+    title: string;
+    subtitle?: string;
+    hospital?: string;
+    subject?: string;
+    record?: string;
+    sentTime?: string;
+    status?: string;
+    issue?: string;
+    message?: string;
+    existingQuery?: any;
+  } | null>(null);
+
+  const [newQueryData, setNewQueryData] = useState(() => {
+    const { date, time } = getFormattedCurrentDateTime();
+    return {
+      hospital: 'S02',
+      siteid: 'S02',
+      usubjid: '042-S02-004',
+      record_ref: 'AE Seq 1',
+      domain: 'AE',
+      seq: 1,
+      issue: 'AE_ONSET_VERIFICATION',
+      message: 'AE start date precedes first study drug exposure date. Please verify against hospital source records.',
+      question: 'AE start date precedes first study drug exposure date. Please verify against hospital source records.',
+      date: date,
+      time: time,
+    };
   });
 
   const switchTab = (tab: TabKey) => {
@@ -312,14 +356,104 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
     }
   };
 
+  // Auto-dismiss success notification after 8 seconds
+  useEffect(() => {
+    if (queryNotification && queryNotification.type === 'success') {
+      const timer = setTimeout(() => {
+        setQueryNotification(null);
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [queryNotification]);
+
+  // Pre-fill query modal for any clinical finding
+  const openQueryModalForFinding = (f: any) => {
+    const { date, time } = getFormattedCurrentDateTime();
+    const domain = (f.evidence && f.evidence.length > 0 ? f.evidence[0].domain : 'AE') || 'AE';
+    const seq = (f.evidence && f.evidence.length > 0 ? f.evidence[0].seq : 1) || 1;
+    const recRef = `${domain} Seq ${seq}`;
+    const site = f.siteid || 'S02';
+    setNewQueryData({
+      hospital: site,
+      siteid: site,
+      usubjid: f.usubjid || '042-S02-004',
+      record_ref: recRef,
+      domain: domain,
+      seq: seq,
+      issue: f.finding_code || 'AE_ONSET_VERIFICATION',
+      message: f.rationale || `Please verify ${recRef} for subject ${f.usubjid} against hospital source records.`,
+      question: f.rationale || `Please verify ${recRef} for subject ${f.usubjid} against hospital source records.`,
+      date: date,
+      time: time,
+    });
+    setShowQueryModal(true);
+  };
+
   const handleCreateQuery = async (e: React.FormEvent) => {
     e.preventDefault();
+    setQuerySending(true);
     try {
-      await api.postQuery(newQueryData);
+      const { date: defaultDate, time: defaultTime } = getFormattedCurrentDateTime();
+      const recRef = (newQueryData.record_ref || '').trim();
+      const domainVal = (newQueryData.domain || recRef.split(' ')[0] || 'AE').toUpperCase();
+      const hosp = (newQueryData.hospital || newQueryData.siteid || 'S02').trim();
+
+      const payload = {
+        hospital: hosp,
+        siteid: hosp,
+        usubjid: newQueryData.usubjid.trim().toUpperCase(),
+        record_ref: recRef || `${domainVal} Seq ${newQueryData.seq || 1}`,
+        domain: domainVal,
+        seq: Number(newQueryData.seq) || 1,
+        issue: (newQueryData.issue || 'DATA_DISCREPANCY').trim(),
+        message: (newQueryData.message || newQueryData.question || '').trim(),
+        question: (newQueryData.message || newQueryData.question || '').trim(),
+        date: (newQueryData.date || defaultDate).trim(),
+        time: (newQueryData.time || defaultTime).trim(),
+      };
+
+      const resp = await api.postQuery(payload);
+
+      if (resp && resp.duplicate) {
+        // DUPLICATE QUERY PROTECTION
+        setQueryNotification({
+          type: 'duplicate',
+          title: '⚠️ Existing Query Found',
+          subtitle: 'Duplicate query prevented. This record and issue have already been queried.',
+          hospital: resp.hospital || payload.hospital,
+          subject: resp.subject || payload.usubjid,
+          record: resp.record || payload.record_ref,
+          issue: resp.issue || payload.issue,
+          existingQuery: resp.existing_query,
+        });
+        return;
+      }
+
+      // SUCCESS: QUERY SENT TO HOSPITAL MANAGEMENT
       setShowQueryModal(false);
+      setQueryNotification({
+        type: 'success',
+        title: '🏥 Query Sent Successfully',
+        subtitle: 'Sent to Hospital Management',
+        hospital: resp.hospital || payload.hospital,
+        subject: resp.subject || payload.usubjid,
+        record: resp.record || payload.record_ref,
+        sentTime: `${resp.date || payload.date}, ${resp.time || payload.time}`,
+        status: resp.status || 'SENT TO HOSPITAL MANAGEMENT',
+        message: resp.message_text || payload.message,
+      });
+
+      // Refresh monitor cycle to include updated memory
       await runWorkflow(activeCut, activeProtocol);
     } catch (err: any) {
-      alert(`Failed to post query: ${err.message}`);
+      console.error('Technical error transmitting query:', err);
+      setQueryNotification({
+        type: 'error',
+        title: 'Unable to save query. Please try again.',
+        subtitle: 'The hospital communication layer encountered an unexpected issue. Please retry.',
+      });
+    } finally {
+      setQuerySending(false);
     }
   };
 
@@ -1184,46 +1318,121 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
       {/* TAB 4: QUERIES PAGE */}
       {/* ========================================================================= */}
       {activeTab === 'queries' && result && (
-        <div className="card space-y-4">
+        <div className="card space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-200">
             <div>
-              <SectionHeading>Data Manager EDC Queries & Site Responses</SectionHeading>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🏥</span>
+                <SectionHeading>Data Manager EDC Queries & Hospital Communications</SectionHeading>
+              </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                Cites exact record and describes specific issue. Zero duplicates created across repeat runs.
+                Grounded EDC discrepancy queries dispatched to Hospital Management and Clinical Sites with persistent audit trace. Zero duplicates permitted.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1 text-xs">
                 <span className="font-semibold text-gray-600">Status:</span>
-                {(['ALL', 'OPEN', 'CLOSED', 'RESPONDED', 'UNANSWERED', 'ON_HOLD'] as const).map(st => (
+                {(['ALL', 'SENT TO HOSPITAL MANAGEMENT', 'OPEN', 'CLOSED', 'RESPONDED', 'UNANSWERED'] as const).map(st => (
                   <button
                     key={st}
                     onClick={() => setQueryFilter(st)}
-                    className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
-                      queryFilter === st ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    className={`px-2 py-0.5 rounded font-semibold text-[11px] transition-colors ${
+                      queryFilter === st ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {st}
+                    {st === 'SENT TO HOSPITAL MANAGEMENT' ? 'SENT TO HOSPITAL' : st}
                   </button>
                 ))}
               </div>
               <button
-                onClick={() => setShowQueryModal(true)}
-                className="btn-primary text-xs px-2.5 py-1"
+                onClick={() => {
+                  const { date, time } = getFormattedCurrentDateTime();
+                  setNewQueryData(prev => ({
+                    ...prev,
+                    date,
+                    time,
+                  }));
+                  setShowQueryModal(true);
+                }}
+                className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-xs"
               >
-                + Post Query
+                <span>🏥</span>
+                <span>Send Query to Hospital</span>
               </button>
             </div>
           </div>
+
+          {/* Recent Hospital Transmissions Card Container */}
+          {result.queries && result.queries.some(q => q.reply_status === 'SENT TO HOSPITAL MANAGEMENT') && (
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span>🏥 Recent Hospital Transmissions (Query Sent Log)</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {result.queries
+                  .filter(q => q.reply_status === 'SENT TO HOSPITAL MANAGEMENT')
+                  .slice(0, 6)
+                  .map((hq, hIdx) => (
+                    <div
+                      key={hIdx}
+                      className="border-2 border-indigo-300 bg-white rounded-xl p-3.5 shadow-xs font-sans text-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                        <span className="font-mono font-black text-indigo-900 tracking-wider text-[11px]">
+                          QUERY SENT
+                        </span>
+                        <span className="font-mono text-[10px] text-gray-500 font-bold">
+                          {hq.query_id}
+                        </span>
+                      </div>
+                      <div className="space-y-1 font-mono text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 font-sans">Hospital:</span>
+                          <span className="font-bold text-gray-900">{hq.siteid || 'S02'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 font-sans">Subject:</span>
+                          <span className="font-bold text-blue-900">{hq.usubjid}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 font-sans">Record:</span>
+                          <span className="font-bold text-indigo-900">
+                            {hq.record_ref || `${hq.domain} Seq ${hq.seq}`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-dashed border-gray-200">
+                          <span className="text-gray-500 font-sans">Date:</span>
+                          <span className="text-gray-800">{hq.date || '19 Sep 2026'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 font-sans">Time:</span>
+                          <span className="text-gray-800">{hq.time || '12:30 PM'}</span>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-gray-100">
+                        <div className="text-[10px] text-gray-500 font-sans uppercase font-bold mb-0.5">
+                          Status:
+                        </div>
+                        <span className="inline-block w-full text-center bg-blue-50 border border-blue-300 text-blue-900 font-bold py-0.5 rounded text-[10.5px]">
+                          {hq.reply_status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
 
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full divide-y divide-gray-100 text-xs">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="table-th">Query ID</th>
+                  <th className="table-th">Hospital / Site</th>
+                  <th className="table-th">Subject</th>
                   <th className="table-th">Record Ref</th>
-                  <th className="table-th">Site</th>
-                  <th className="table-th">Query Issue & Text</th>
+                  <th className="table-th">Issue & Question Text</th>
+                  <th className="table-th">Sent Date & Time</th>
                   <th className="table-th">Status</th>
                   <th className="table-th">Site Response</th>
                 </tr>
@@ -1232,15 +1441,32 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
                 {filteredQueries.map((q, i) => (
                   <tr key={i} className="hover:bg-blue-50/40">
                     <td className="table-td font-mono font-bold text-gray-700">{q.query_id}</td>
-                    <td className="table-td font-mono font-bold text-blue-700">
-                      {q.domain}|{q.usubjid}|{q.seq}
+                    <td className="table-td font-medium text-gray-800">{q.siteid || 'Site'}</td>
+                    <td className="table-td font-mono font-bold text-blue-900">{q.usubjid}</td>
+                    <td className="table-td font-mono font-bold text-indigo-700">
+                      {q.record_ref || `${q.domain} Seq ${q.seq}`}
                     </td>
-                    <td className="table-td font-medium text-gray-600">{q.siteid || 'Site'}</td>
-                    <td className="table-td text-gray-900 font-medium">{q.question}</td>
-                    <td className="table-td">
-                      <Badge variant={q.reply_status === 'CLOSED' ? 'green' : q.reply_status === 'OPEN' ? 'red' : 'blue'}>
-                        {q.reply_status}
-                      </Badge>
+                    <td className="table-td text-gray-900 font-medium max-w-xs">
+                      {q.issue && (
+                        <span className="inline-block font-mono text-[9.5px] font-bold bg-gray-100 text-gray-700 px-1.5 py-0.2 rounded mr-1">
+                          {q.issue}
+                        </span>
+                      )}
+                      {q.question}
+                    </td>
+                    <td className="table-td font-mono text-gray-600 whitespace-nowrap text-[11px]">
+                      {q.date ? `${q.date}, ${q.time}` : 'Cycle Auto'}
+                    </td>
+                    <td className="table-td whitespace-nowrap">
+                      {q.reply_status === 'SENT TO HOSPITAL MANAGEMENT' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-bold text-[10.5px] bg-blue-100 text-blue-900 border border-blue-300">
+                          🏥 SENT TO HOSPITAL MANAGEMENT
+                        </span>
+                      ) : (
+                        <Badge variant={q.reply_status === 'CLOSED' ? 'green' : q.reply_status === 'OPEN' ? 'red' : 'blue'}>
+                          {q.reply_status}
+                        </Badge>
+                      )}
                     </td>
                     <td className="table-td text-gray-600 italic">"{q.reply_text}"</td>
                   </tr>
@@ -1699,16 +1925,16 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
               </div>
 
               {/* Trace Event Count */}
-              <div className="p-3 bg-slate-900 text-white rounded-lg flex items-center justify-between text-xs mt-2">
+              <div className="p-3.5 bg-white border border-slate-200/90 rounded-xl shadow-xs flex items-center justify-between text-xs mt-2">
                 <div>
-                  <span className="font-bold text-teal-400">13. Live Audit Trail: </span>
-                  <span className="text-slate-300">
+                  <span className="font-bold text-slate-900">13. Live Audit Trail: </span>
+                  <span className="text-slate-600 font-medium">
                     {result.trace_count || result.trace?.length || 0} chronological entries recorded in immutable ledger.
                   </span>
                 </div>
                 <button
                   onClick={() => switchTab('audittrail')}
-                  className="px-2.5 py-1 bg-teal-600 hover:bg-teal-500 rounded text-[11px] font-bold text-white transition-colors"
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 rounded-lg text-xs font-bold text-white transition-all shadow-xs"
                 >
                   View Trace →
                 </button>
@@ -1931,24 +2157,24 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
       {/* REQUIREMENT 31: EVIDENCE INSPECTION PANEL MODAL */}
       {/* ========================================================================= */}
       {selectedFindingDetail && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-200 overflow-hidden animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-slate-900/30 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in duration-150">
             {/* Modal Header */}
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+            <div className="p-5 bg-white border-b border-slate-200 text-slate-900 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-full bg-blue-400 inline-block animate-pulse"></span>
+                <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
                 <div>
-                  <h2 className="text-base font-black tracking-wide uppercase">
+                  <h2 className="text-base font-extrabold tracking-wide uppercase text-slate-950">
                     FINDING — {selectedFindingDetail.finding?.finding_id}
                   </h2>
-                  <div className="text-xs text-slate-300 font-mono mt-0.5">
+                  <div className="text-xs text-slate-500 font-mono mt-0.5 font-medium">
                     Subject: {selectedFindingDetail.finding?.usubjid} · Site: {selectedFindingDetail.finding?.siteid} · Cut {selectedFindingDetail.finding?.cut || result?.cut} · Protocol v{selectedFindingDetail.finding?.protocol_version || result?.protocol_version}
                   </div>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedFindingDetail(null)}
-                className="text-slate-400 hover:text-white text-lg font-bold px-2 py-1 rounded transition-colors"
+                className="text-slate-400 hover:text-slate-900 text-lg font-bold px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
                 title="Close"
               >
                 ✕
@@ -2118,16 +2344,32 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+            <div className="p-3 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
               <span className="text-[11px] text-gray-500 font-mono">
                 Study Sentinel Intelligence Platform · Verified against StudyGraph
               </span>
-              <button
-                onClick={() => setSelectedFindingDetail(null)}
-                className="btn-primary text-xs px-5 py-1.5"
-              >
-                Close Inspection
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedFindingDetail.finding) {
+                      openQueryModalForFinding(selectedFindingDetail.finding);
+                      setSelectedFindingDetail(null);
+                    }
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <span>🏥</span>
+                  <span>Send Query to Hospital</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedFindingDetail(null)}
+                  className="btn-secondary text-xs px-4 py-1.5"
+                >
+                  Close Inspection
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2246,70 +2488,315 @@ export default function Monitor({ defaultTab }: MonitorProps = {}) {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: POST EDC QUERY */}
+      {/* NOTIFICATION / TOAST: HOSPITAL QUERY STATUS & DUPLICATE WARNING */}
+      {/* ========================================================================= */}
+      {queryNotification && (
+        <div className="fixed top-16 right-4 z-50 max-w-md w-full animate-in fade-in slide-in-from-top-4 duration-300">
+          {queryNotification.type === 'success' ? (
+            <div className="bg-white border-2 border-emerald-500 rounded-xl shadow-2xl p-4 space-y-2.5 text-xs text-gray-900">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🏥</span>
+                  <div>
+                    <h4 className="font-extrabold text-emerald-950 text-sm">{queryNotification.title}</h4>
+                    <div className="font-bold text-emerald-700 text-xs">{queryNotification.subtitle}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setQueryNotification(null)}
+                  className="text-gray-400 hover:text-gray-700 font-bold px-1.5 py-0.5 text-sm"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-lg space-y-1.5 font-sans">
+                <div className="font-bold text-emerald-900 text-xs tracking-wide">
+                  ✅ QUERY SENT TO HOSPITAL MANAGEMENT
+                </div>
+                <div className="text-gray-600 text-[11px]">Query successfully sent.</div>
+
+                <div className="space-y-1 pt-1.5 border-t border-emerald-200/70 font-mono text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Hospital/Site:</span>
+                    <span className="font-bold text-emerald-950">{queryNotification.hospital}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Subject:</span>
+                    <span className="font-bold text-blue-900">{queryNotification.subject}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Record:</span>
+                    <span className="font-bold text-indigo-900">{queryNotification.record}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Sent:</span>
+                    <span className="text-gray-800">{queryNotification.sentTime}</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 mt-1 border-t border-emerald-200/70 flex items-center justify-between">
+                  <span className="font-semibold text-gray-700 text-[11px]">Status:</span>
+                  <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded text-[10px] tracking-wider uppercase">
+                    {queryNotification.status || 'SENT TO HOSPITAL MANAGEMENT'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : queryNotification.type === 'duplicate' ? (
+            <div className="bg-white border-2 border-amber-500 rounded-xl shadow-2xl p-4 space-y-2.5 text-xs text-gray-900">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">⚠️</span>
+                  <div>
+                    <h4 className="font-extrabold text-amber-950 text-sm">{queryNotification.title}</h4>
+                    <div className="font-semibold text-amber-700 text-xs">{queryNotification.subtitle}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setQueryNotification(null)}
+                  className="text-gray-400 hover:text-gray-700 font-bold px-1.5 py-0.5 text-sm"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-lg space-y-1.5 font-sans">
+                <div className="font-bold text-amber-900 text-xs">
+                  ⚠️ EXISTING QUERY FOUND
+                </div>
+                <div className="text-gray-700 text-[11px]">
+                  MONITOR memory rule active: Duplicate query prevented. The exact same Subject + RecordRef + Issue has already been queried.
+                </div>
+
+                <div className="space-y-1 pt-1.5 border-t border-amber-200/70 font-mono text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Hospital:</span>
+                    <span className="font-bold text-gray-900">{queryNotification.hospital}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Subject:</span>
+                    <span className="font-bold text-blue-900">{queryNotification.subject}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Record:</span>
+                    <span className="font-bold text-indigo-900">{queryNotification.record}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600 font-sans">Issue:</span>
+                    <span className="font-bold text-amber-900">{queryNotification.issue}</span>
+                  </div>
+                  {queryNotification.existingQuery && (
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-gray-600 font-sans">Query ID:</span>
+                      <span className="font-bold text-gray-800">{queryNotification.existingQuery.query_id}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white border-2 border-rose-500 rounded-xl shadow-2xl p-4 space-y-2 text-xs text-gray-900">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">⚠️</span>
+                  <div>
+                    <h4 className="font-extrabold text-rose-950 text-sm">{queryNotification.title}</h4>
+                    <div className="text-gray-600 text-xs mt-0.5">{queryNotification.subtitle}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setQueryNotification(null)}
+                  className="text-gray-400 hover:text-gray-700 font-bold px-1.5 py-0.5 text-sm"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DATA MANAGER SEND QUERY TO HOSPITAL */}
       {/* ========================================================================= */}
       {showQueryModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-4 space-y-3">
-            <h3 className="text-sm font-bold text-gray-900">
-              Transmit New EDC Query via Data Manager
-            </h3>
-            <form onSubmit={handleCreateQuery} className="space-y-3 text-xs">
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-gray-600 font-semibold">Domain:</label>
-                  <input
-                    type="text"
-                    value={newQueryData.domain}
-                    onChange={e => setNewQueryData({ ...newQueryData, domain: e.target.value })}
-                    className="w-full p-1.5 border border-gray-300 rounded font-mono"
-                    required
-                  />
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-5 space-y-4 border border-gray-200">
+            <div className="flex items-start justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center justify-center text-lg">
+                  🏥
                 </div>
                 <div>
-                  <label className="text-gray-600 font-semibold">Subject ID:</label>
+                  <h3 className="text-base font-bold text-gray-950">
+                    Send Query to Hospital
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Data Manager EDC Communication Layer · Dispatches to Hospital Management
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQueryModal(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm px-1.5"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateQuery} className="space-y-3.5 text-xs">
+              {/* Row 1: Hospital / Site and Subject */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1">
+                    Hospital / Site:
+                  </label>
+                  <select
+                    value={newQueryData.hospital}
+                    onChange={e => setNewQueryData({ ...newQueryData, hospital: e.target.value, siteid: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-lg bg-white font-medium text-xs text-gray-900 focus:ring-2 focus:ring-indigo-500"
+                    required
+                  >
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const s = `S${String(i + 1).padStart(2, '0')}`;
+                      return (
+                        <option key={s} value={s}>
+                          Hospital / Site {s}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1">
+                    Subject:
+                  </label>
                   <input
                     type="text"
+                    placeholder="e.g. 042-S02-004"
                     value={newQueryData.usubjid}
                     onChange={e => setNewQueryData({ ...newQueryData, usubjid: e.target.value })}
-                    className="w-full p-1.5 border border-gray-300 rounded font-mono"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-gray-600 font-semibold">Sequence:</label>
-                  <input
-                    type="number"
-                    value={newQueryData.seq}
-                    onChange={e => setNewQueryData({ ...newQueryData, seq: Number(e.target.value) })}
-                    className="w-full p-1.5 border border-gray-300 rounded font-mono"
+                    className="w-full p-2 border border-gray-300 rounded-lg font-mono font-bold text-xs text-blue-950 focus:ring-2 focus:ring-indigo-500 uppercase"
                     required
                   />
                 </div>
               </div>
+
+              {/* Row 2: Record reference & Query issue */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1">
+                    Record Reference:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. AE Seq 1 or LB Seq 3"
+                    value={newQueryData.record_ref}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const parts = val.replace('-', ' ').replace('Seq', ' ').split(/\s+/).filter(Boolean);
+                      const d = parts[0] || newQueryData.domain;
+                      const s = parts[1] && !isNaN(Number(parts[1])) ? Number(parts[1]) : newQueryData.seq;
+                      setNewQueryData({
+                        ...newQueryData,
+                        record_ref: val,
+                        domain: d,
+                        seq: s,
+                      });
+                    }}
+                    className="w-full p-2 border border-gray-300 rounded-lg font-mono font-semibold text-xs text-indigo-950 focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1">
+                    Query Issue:
+                  </label>
+                  <select
+                    value={newQueryData.issue}
+                    onChange={e => setNewQueryData({ ...newQueryData, issue: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-lg bg-white font-medium text-xs text-gray-900 focus:ring-2 focus:ring-indigo-500"
+                    required
+                  >
+                    <option value="AE_ONSET_VERIFICATION">AE_ONSET_VERIFICATION (Onset before dosing)</option>
+                    <option value="DOSING_ERROR">DOSING_ERROR (Protocol dose deviation)</option>
+                    <option value="SAE_MISCODED">SAE_MISCODED (Hospitalization not flagged serious)</option>
+                    <option value="PROHIBITED_MED">PROHIBITED_MED (Prohibited concomitant med)</option>
+                    <option value="DUPLICATE_SUBJECT">DUPLICATE_SUBJECT (Cross-site enrollment duplicate)</option>
+                    <option value="DATA_DISCREPANCY">DATA_DISCREPANCY (Discrepant clinical record)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 3: Query message */}
               <div>
-                <label className="text-gray-600 font-semibold">Query Question / Request to Site:</label>
+                <label className="block text-gray-700 font-bold mb-1">
+                  Query Message:
+                </label>
                 <textarea
-                  value={newQueryData.question}
-                  onChange={e => setNewQueryData({ ...newQueryData, question: e.target.value })}
-                  className="w-full p-2 border border-gray-300 rounded text-xs"
+                  value={newQueryData.message}
+                  onChange={e => setNewQueryData({ ...newQueryData, message: e.target.value, question: e.target.value })}
+                  placeholder="Enter detailed clarification request to hospital management..."
+                  className="w-full p-2.5 border border-gray-300 rounded-lg text-xs leading-relaxed focus:ring-2 focus:ring-indigo-500"
                   rows={3}
                   required
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+
+              {/* Row 4: Date & Time */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1">
+                    Date:
+                  </label>
+                  <input
+                    type="text"
+                    value={newQueryData.date}
+                    onChange={e => setNewQueryData({ ...newQueryData, date: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-lg font-mono text-xs text-gray-800 focus:ring-2 focus:ring-indigo-500"
+                    placeholder="e.g. 19 Sep 2026"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1">
+                    Time:
+                  </label>
+                  <input
+                    type="text"
+                    value={newQueryData.time}
+                    onChange={e => setNewQueryData({ ...newQueryData, time: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-lg font-mono text-xs text-gray-800 focus:ring-2 focus:ring-indigo-500"
+                    placeholder="e.g. 12:30 PM"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-3 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={() => setShowQueryModal(false)}
-                  className="btn-secondary text-xs px-3 py-1.5"
+                  className="btn-secondary text-xs px-4 py-2"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary text-xs px-3 py-1.5"
+                  disabled={querySending}
+                  className="btn-primary text-xs px-5 py-2 flex items-center gap-1.5 shadow-md bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
                 >
-                  Transmit Query
+                  <span>🏥</span>
+                  <span>{querySending ? 'Sending to Hospital...' : 'SEND TO HOSPITAL'}</span>
                 </button>
               </div>
             </form>

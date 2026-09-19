@@ -1,0 +1,46 @@
+{
+  "hash": "8a130de6",
+  "configHash": "a41b10fa",
+  "lockfileHash": "7066a177",
+  "browserHash": "867dcce6",
+  "optimized": {
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "49b6bc4f",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "26ec1733",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "e4a5ca9e",
+      "needsInterop": true
+    },
+    "react-router-dom": {
+      "src": "../../node_modules/react-router-dom/dist/index.mjs",
+      "file": "react-router-dom.js",
+      "fileHash": "e342d426",
+      "needsInterop": false
+    },
+    "recharts": {
+      "src": "../../node_modules/recharts/es6/index.js",
+      "file": "recharts.js",
+      "fileHash": "a7974fe7",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-LLDKFW7D": {
+      "file": "chunk-LLDKFW7D.js"
+    },
+    "chunk-DXG3RW7P": {
+      "file": "chunk-DXG3RW7P.js"
+    }
+  }
+}

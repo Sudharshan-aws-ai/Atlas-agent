@@ -1,16 +1,21 @@
-// Shared UI components
+import React from 'react';
+
+// Shared UI components — Apple-inspired Minimalist White Design
 
 export function Spinner({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
-  const s = size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-10 w-10' : 'h-6 w-6';
+  const s = size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-9 w-9' : 'h-6 w-6';
   return (
-    <div className={`${s} animate-spin rounded-full border-2 border-gray-200 border-t-blue-600`} />
+    <div className={`${s} animate-spin rounded-full border-2 border-slate-200 border-t-slate-900`} />
   );
 }
 
 export function ErrorMessage({ message }: { message: string }) {
   return (
-    <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-red-700 text-sm">
-      <strong>Error:</strong> {message}
+    <div className="rounded-xl bg-white border border-rose-200/90 p-4 text-rose-800 text-sm shadow-xs flex items-start gap-3">
+      <span className="text-rose-500 font-bold text-base leading-none mt-0.5">⚠️</span>
+      <div>
+        <strong className="font-semibold text-rose-900">Error:</strong> {message}
+      </div>
     </div>
   );
 }
@@ -26,28 +31,56 @@ export function StatCard({
   sub?: string;
   color?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'gray';
 }) {
-  const colorMap = {
-    blue: 'bg-blue-50 border-blue-100 text-blue-900',
-    green: 'bg-green-50 border-green-100 text-green-900',
-    yellow: 'bg-yellow-50 border-yellow-100 text-yellow-900',
-    red: 'bg-red-50 border-red-100 text-red-900',
-    purple: 'bg-purple-50 border-purple-100 text-purple-900',
-    gray: 'bg-gray-50 border-gray-100 text-gray-900',
+  const accentText = {
+    blue: 'text-sky-600',
+    green: 'text-emerald-600',
+    yellow: 'text-amber-600',
+    red: 'text-rose-600',
+    purple: 'text-violet-600',
+    gray: 'text-slate-700',
   };
+
+  const accentPill = {
+    blue: 'bg-sky-50 text-sky-700 border-sky-200/80',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+    yellow: 'bg-amber-50 text-amber-700 border-amber-200/80',
+    red: 'bg-rose-50 text-rose-700 border-rose-200/80',
+    purple: 'bg-violet-50 text-violet-700 border-violet-200/80',
+    gray: 'bg-slate-50 text-slate-700 border-slate-200/80',
+  };
+
   return (
-    <div className={`rounded-xl border p-5 ${colorMap[color]}`}>
-      <div className="text-3xl font-bold">{value.toLocaleString()}</div>
-      <div className="text-sm font-semibold mt-1 opacity-80">{label}</div>
-      {sub && <div className="text-xs mt-1 opacity-60">{sub}</div>}
+    <div className="bg-white rounded-2xl border border-slate-200/85 p-5 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.03)] hover:shadow-[0_4px_20px_-2px_rgba(0,0,0,0.06)] hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+        <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full border ${accentPill[color]}`}>
+          {color.toUpperCase()}
+        </span>
+      </div>
+      <div className={`text-3xl font-extrabold tracking-tight font-mono my-2.5 ${accentText[color]}`}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </div>
+      {sub && <div className="text-xs text-slate-500 font-medium">{sub}</div>}
     </div>
   );
 }
 
-export function SectionHeading({ children }: { children: React.ReactNode }) {
+export function SectionHeading({
+  title,
+  subtitle,
+  children,
+}: {
+  title?: string;
+  subtitle?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-      {children}
-    </h2>
+    <div className="mb-4">
+      <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+        {title || children}
+      </h2>
+      {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+    </div>
   );
 }
 
@@ -62,22 +95,24 @@ export function Table({
 }) {
   if (rows.length === 0) {
     return (
-      <div className="text-sm text-gray-400 italic py-6 text-center">{emptyMsg}</div>
+      <div className="text-sm text-slate-400 italic py-8 text-center bg-white rounded-xl border border-slate-200">
+        {emptyMsg}
+      </div>
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-100 text-sm">
-        <thead className="bg-gray-50">
+    <div className="overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-xs">
+      <table className="min-w-full divide-y divide-slate-200 text-sm">
+        <thead className="bg-slate-50/75">
           <tr>
             {columns.map(c => (
               <th key={c.key} className="table-th">{c.label}</th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50">
+        <tbody className="divide-y divide-slate-100 bg-white">
           {rows.map((row, i) => (
-            <tr key={i} className="hover:bg-gray-50 transition-colors">
+            <tr key={i} className="hover:bg-slate-50/70 transition-colors">
               {columns.map(c => (
                 <td key={c.key} className="table-td">
                   {c.render
@@ -97,10 +132,18 @@ export function Badge({
   variant,
   children,
 }: {
-  variant: 'red' | 'yellow' | 'green' | 'blue' | 'gray';
+  variant: 'red' | 'yellow' | 'green' | 'blue' | 'gray' | 'purple';
   children: React.ReactNode;
 }) {
-  return <span className={`badge-${variant}`}>{children}</span>;
+  const styles = {
+    red: 'bg-rose-50 text-rose-700 border border-rose-200/80',
+    yellow: 'bg-amber-50 text-amber-800 border border-amber-200/80',
+    green: 'bg-emerald-50 text-emerald-800 border border-emerald-200/80',
+    blue: 'bg-sky-50 text-sky-700 border border-sky-200/80',
+    purple: 'bg-violet-50 text-violet-700 border border-violet-200/80',
+    gray: 'bg-slate-50 text-slate-700 border border-slate-200/80',
+  };
+  return <span className={`badge ${styles[variant] || styles.gray}`}>{children}</span>;
 }
 
 export function Tabs({
@@ -113,25 +156,32 @@ export function Tabs({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
-      {tabs.map(t => (
-        <button
-          key={t.id}
-          onClick={() => onChange(t.id)}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-            active === t.id
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-          }`}
-        >
-          {t.label}
-          {t.count !== undefined && (
-            <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
-              active === t.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-            }`}>{t.count}</span>
-          )}
-        </button>
-      ))}
+    <div className="flex gap-1.5 border-b border-slate-200 mb-6 overflow-x-auto pb-0.5">
+      {tabs.map(t => {
+        const isActive = active === t.id;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            className={`px-3.5 py-2 text-xs font-semibold transition-all whitespace-nowrap rounded-lg flex items-center gap-2 ${
+              isActive
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+            }`}
+          >
+            <span>{t.label}</span>
+            {t.count !== undefined && (
+              <span
+                className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'
+                }`}
+              >
+                {t.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

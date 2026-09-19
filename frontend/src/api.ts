@@ -97,8 +97,22 @@ export const api = {
 
   monitorAllTrace: () => fetchJSON<any[]>('/api/monitor/trace'),
 
-  postQuery: (data: { domain: string; usubjid: string; seq: number; question: string; finding_id?: string; siteid?: string }) =>
-    fetchJSON<any>('/api/queries', { method: 'POST', body: JSON.stringify(data) }),
+  patientDiseaseGraph: () => fetchJSON<any>('/api/patient-disease-graph'),
+
+  postQuery: (data: {
+    hospital?: string;
+    siteid?: string;
+    usubjid: string;
+    record_ref?: string;
+    domain?: string;
+    seq?: number;
+    issue?: string;
+    message?: string;
+    question?: string;
+    date?: string;
+    time?: string;
+    finding_id?: string;
+  }) => fetchJSON<any>('/api/queries', { method: 'POST', body: JSON.stringify(data) }),
 
   // Problem 3: WATCH methods
   watchSurveillance: (cutFrom = 1, cutTo = 12) =>
@@ -110,6 +124,29 @@ export const api = {
   watchAdversarial: (cut?: number) =>
     fetchJSON<any[]>(`/api/watch/adversarial${cut ? `?cut=${cut}` : ''}`),
 
+  watchRunPeriod: (cutFrom = 1, cutTo = 12) =>
+    fetchJSON<any>('/api/watch/run-period', {
+      method: 'POST',
+      body: JSON.stringify({ cut_from: cutFrom, cut_to: cutTo }),
+    }),
+
+  watchReport: () =>
+    fetchJSON<any>('/api/watch/report'),
+
+  watchTimeline: () =>
+    fetchJSON<any[]>('/api/watch/timeline'),
+
+  watchSiteRisk: () =>
+    fetchJSON<any[]>('/api/watch/site-risk'),
+
+  watchDecisions: () =>
+    fetchJSON<any[]>('/api/watch/decisions'),
+
+  watchEscalations: () =>
+    fetchJSON<any[]>('/api/watch/escalations'),
+
   watchExplain: (signalId: string) =>
     fetchJSON<any>(`/api/watch/explain/${encodeURIComponent(signalId)}`),
 };
+
+

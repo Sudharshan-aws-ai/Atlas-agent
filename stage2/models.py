@@ -94,13 +94,23 @@ class Query:
     siteid: str
     seq: int
     question: str
-    reply_status: str  # OPEN, ANSWERED, CLOSED
+    reply_status: str  # OPEN, ANSWERED, CLOSED, SENT TO HOSPITAL MANAGEMENT
     reply_text: str
-    cut: int
+    cut: int = 12
     timestamp: str = field(default_factory=_now_iso)
+    issue: Optional[str] = None
+    record_ref: Optional[str] = None
+    date: Optional[str] = None
+    time: Optional[str] = None
+    evidence: List[RecordRef] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["evidence"] = [
+            e.model_dump() if hasattr(e, "model_dump") else (e.to_dict() if hasattr(e, "to_dict") else e.__dict__)
+            for e in self.evidence
+        ]
+        return d
 
 
 @dataclass
